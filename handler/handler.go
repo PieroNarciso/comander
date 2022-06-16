@@ -2,8 +2,10 @@ package handler
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/melbahja/goph"
@@ -11,19 +13,18 @@ import (
 )
 
 type commands struct {
-	Commands []remoteCommand `yaml:"commands"`
+	Commands []RemoteCommand `yaml:"commands"`
 }
 
-type remoteCommand struct {
+type RemoteCommand struct {
 	Name        string `yaml:"name"`
-	Path        string `yaml:"path"`
 	ExecCommand string `yaml:"command"`
 	KeyPath     string `yaml:"key-path"`
 	IP          string `yaml:"ip"`
 	Username    string `yaml:"username"`
 }
 
-func ConfigOption(configPath string) ([]remoteCommand, error) {
+func ConfigOption(configPath string) ([]RemoteCommand, error) {
 	absPath, _ := filepath.Abs(configPath)
 	file, err := ioutil.ReadFile(absPath)
 	if err != nil {
@@ -38,7 +39,7 @@ func ConfigOption(configPath string) ([]remoteCommand, error) {
 	return cmds.Commands, nil
 }
 
-func Command(cmd remoteCommand) error {
+func Command(cmd RemoteCommand) error {
 	auth, err := goph.Key(cmd.KeyPath, "")
 	if err != nil {
 		return err
@@ -48,13 +49,20 @@ func Command(cmd remoteCommand) error {
 		return err
 	}
 	defer client.Close()
-	// Move to path
-	strCommand := fmt.Sprintf("cd %s && %s", cmd.Path, cmd.ExecCommand)
-	output, err := client.Run(strCommand)
+	cliComand := fmt.Sprintf("bash -l -c '%s'", cmd.ExecCommand)
+	cmdExec, err := client.Command(cliComand)
 	if err != nil {
 		return err
 	}
-	log.Println(string(output))
-	log.Println(cmd.Name, "command run correctly")
+
+	stdout, err := cmdExec.StdoutPipe()
+	stderr, err := cmdExec.StderrPipe()
+	err = cmdExec.Start()
+	if err != nil {
+		log.Println(err)
+	}
+	defer cmdExec.Wait()
+	go io.Copy(os.Stdout, stdout)
+	go io.Copy(os.Stdout, stderr)
 	return nil
 }

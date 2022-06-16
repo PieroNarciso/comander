@@ -7,6 +7,7 @@ package cmd
 import (
 	"log"
 	"os"
+	"sync"
 
 	"github.com/PieroNarciso/comander/handler"
 	"github.com/spf13/cobra"
@@ -29,12 +30,19 @@ var rootCmd = &cobra.Command{
 			log.Println(err)
 			os.Exit(1)
 		}
-		for _, cmd := range cmds {
-			err = handler.Command(cmd)
-			if err != nil {
-				log.Println(err)
-			}
+		var wg sync.WaitGroup
+
+		for ix := range cmds {
+			wg.Add(1)
+			go func(command handler.RemoteCommand, wg *sync.WaitGroup) {
+				defer wg.Done()
+				err = handler.Command(command)
+				if err != nil {
+					log.Println(err)
+				}
+			}(cmds[ix], &wg)
 		}
+		wg.Wait()
 	},
 }
 
